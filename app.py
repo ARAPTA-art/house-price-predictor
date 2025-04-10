@@ -18,15 +18,19 @@ from typing import Tuple, Optional
 import logging
 from datetime import datetime
 
+# Streamlit configuration
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = Path("xgboost_pipeline.pkl")
-TRAIN_DATA_PATH = Path("train.csv")
+# Use relative paths for deployment compatibility
+BASE_DIR = Path(__file__).parent
+MODEL_PATH = BASE_DIR / "xgboost_pipeline.pkl"
+TRAIN_DATA_PATH = BASE_DIR / "train.csv"
 CURRENT_YEAR = datetime.now().year
-USD_TO_KSH = 130  # Exchange rate: 1 USD = 130 KSh (adjust as needed)
+USD_TO_KSH = 130  # Fixed exchange rate: 1 USD = 130 KSh
 
+# Custom CSS for UI
 st.markdown("""
     <style>
     :root {
@@ -48,6 +52,9 @@ st.markdown("""
 @st.cache_resource(ttl=3600)
 def load_model(path: Path) -> Optional[Pipeline]:
     try:
+        if not path.exists():
+            st.warning(f"Model file {path} not found. Creating a new pipeline.")
+            return None
         return joblib.load(path)
     except Exception as e:
         logger.error(f"Model loading failed: {e}")
@@ -57,6 +64,9 @@ def load_model(path: Path) -> Optional[Pipeline]:
 @st.cache_data(ttl=3600)
 def load_training_data(path: Path) -> Optional[pd.DataFrame]:
     try:
+        if not path.exists():
+            st.warning(f"Training data {path} not found.")
+            return None
         return pd.read_csv(path)
     except Exception as e:
         logger.error(f"Data loading failed: {e}")
@@ -70,10 +80,14 @@ def preprocess_data(df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
         features.append('SalePrice')
     df = df[features].copy()
     fill_values = {
-        'GrLivArea': df['GrLivArea'].median(), 'BedroomAbvGr': df['BedroomAbvGr'].median(),
-        'FullBath': df['FullBath'].median(), 'HalfBath': 0, 'OverallQual': df['OverallQual'].median(),
-        'YearBuilt': df['YearBuilt'].median(), 'LotArea': df['LotArea'].median(),
-        'GarageCars': df['GarageCars'].median(), 'Fireplaces': 0,
+        'GrLivArea': df['GrLivArea'].median() if not df['GrLivArea'].isna().all() else 0,
+        'BedroomAbvGr': df['BedroomAbvGr'].median() if not df['BedroomAbvGr'].isna().all() else 0,
+        'FullBath': df['FullBath'].median() if not df['FullBath'].isna().all() else 0,
+        'HalfBath': 0, 'OverallQual': df['OverallQual'].median() if not df['OverallQual'].isna().all() else 5,
+        'YearBuilt': df['YearBuilt'].median() if not df['YearBuilt'].isna().all() else 2000,
+        'LotArea': df['LotArea'].median() if not df['LotArea'].isna().all() else 0,
+        'GarageCars': df['GarageCars'].median() if not df['GarageCars'].isna().all() else 0,
+        'Fireplaces': 0,
         'KitchenQual': df['KitchenQual'].mode()[0] if not df['KitchenQual'].mode().empty else 'TA'
     }
     df = df.fillna(fill_values)
@@ -102,15 +116,19 @@ def create_pipeline() -> Pipeline:
     return Pipeline([('preprocessor', preprocessor), ('regressor', stacking_regressor)])
 
 def retrain_model(pipeline: Pipeline, new_data: pd.DataFrame) -> Pipeline:
-    processed_data = preprocess_data(new_data)
-    X = processed_data.drop('SalePrice', axis=1)
-    y = np.log1p(processed_data['SalePrice'])
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    pipeline.fit(X_train, y_train)
-    cv_scores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring='r2')
-    st.write(f"Cross-Validation R²: {cv_scores.mean():.2f} (± {cv_scores.std():.2f})")
-    joblib.dump(pipeline, MODEL_PATH)
-    return pipeline
+    try:
+        processed_data = preprocess_data(new_data)
+        X = processed_data.drop('SalePrice', axis=1)
+        y = np.log1p(processed_data['SalePrice'])
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        pipeline.fit(X_train, y_train)
+        cv_scores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring='r2')
+        st.write(f"Cross-Validation R²: {cv_scores.mean():.2f} (± {cv_scores.std():.2f})")
+        joblib.dump(pipeline, MODEL_PATH)
+        return pipeline
+    except Exception as e:
+        st.error(f"Model retraining failed: {e}")
+        return pipeline
 
 def validate_inputs(**kwargs) -> None:
     errors = []
@@ -133,7 +151,7 @@ def predict_sale_price(**kwargs) -> Tuple[pd.DataFrame, float]:
     input_data = preprocess_data(input_data, is_train=False)
     pred_log = pipeline.predict(input_data)[0]
     price_usd = np.expm1(pred_log)
-    return input_data, price_usd * USD_TO_KSH  # Convert to KSh
+    return input_data, price_usd * USD_TO_KSH
 
 def evaluate_model(pipeline: Pipeline, X: pd.DataFrame, y: np.ndarray) -> dict:
     y_pred_log = pipeline.predict(X)
@@ -161,11 +179,12 @@ def main():
 
     pipeline = load_model(MODEL_PATH)
     if pipeline is None:
+        st.info("No pre-trained model found. Initializing a new pipeline.")
         pipeline = create_pipeline()
 
     train_data = load_training_data(TRAIN_DATA_PATH)
     if train_data is None and not MODEL_PATH.exists():
-        st.error("No initial training data or model found. Please upload data to train the model.")
+        st.error("No initial training data or model found. Please upload data to proceed.")
         return
 
     st.sidebar.subheader("Retrain Model")
@@ -182,7 +201,7 @@ def main():
         X = train_processed.drop('SalePrice', axis=1)
         y = np.log1p(train_processed['SalePrice'])
         train_processed['PredictedSalePrice'] = np.expm1(pipeline.predict(X)) * USD_TO_KSH
-        train_processed['SalePrice'] = train_processed['SalePrice'] * USD_TO_KSH  # Convert original SalePrice to KSh
+        train_processed['SalePrice'] = train_processed['SalePrice'] * USD_TO_KSH
         metrics = evaluate_model(pipeline, X, y)
         cols = st.columns(4)
         metrics_data = [
@@ -203,6 +222,7 @@ def main():
     
     with tab1:
         st.markdown('<div class="subheader">Price Prediction</div>', unsafe_allow_html=True)
+        # Fixed the ternary operator syntax here
         neighborhoods = train_data['Neighborhood'].unique().tolist() if train_data is not None else ['NAmes']
         with st.form("predict_form"):
             col1, col2 = st.columns(2)
@@ -235,7 +255,6 @@ def main():
                     explainer = shap.TreeExplainer(regressor.named_estimators_['xgb'] if isinstance(regressor, StackingRegressor) else regressor)
                     shap_values = explainer.shap_values(pipeline.named_steps['preprocessor'].transform(input_data))
                     feature_names = pipeline.named_steps['preprocessor'].get_feature_names_out()
-                    # Convert SHAP values to KSh
                     shap_values_ksh = shap_values * USD_TO_KSH
                     fig = px.bar(
                         x=shap_values_ksh[0], y=[name.split('__')[-1] for name in feature_names],
