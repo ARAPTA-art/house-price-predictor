@@ -34,21 +34,113 @@ USD_TO_KSH = 130  # Fixed exchange rate: 1 USD = 130 KSh
 st.markdown("""
     <style>
     :root {
-        --primary-color: #4a6baf; --secondary-color: #f8f9fa; --text-color: #343a40; --shadow: 0 4px 6px rgba(0,0,0,0.1);
+        --primary-color: #6366f1; /* Softer indigo for a modern vibe */
+        --secondary-color: #f9fafb; /* Light gray for backgrounds */
+        --text-color: #1f2937; /* Dark gray for readability */
+        --accent-color: #10b981; /* Emerald green for highlights */
+        --shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+        --border-radius: 0.75rem; /* Slightly larger, smoother corners */
+        --transition: all 0.2s ease-in-out; /* Smooth transitions */
     }
     @media (prefers-color-scheme: dark) {
-        --primary-color: #7b9bff; --secondary-color: #2d2d2d; --text-color: #ffffff; --shadow: 0 4px 6px rgba(255,255,255,0.1);
+        --primary-color: #818cf8; /* Lighter indigo for dark mode */
+        --secondary-color: #1f2937; /* Dark gray background */
+        --text-color: #e5e7eb; /* Light gray text */
+        --accent-color: #34d399; /* Brighter emerald for dark mode */
+        --shadow: 0 2px 4px rgba(255, 255, 255, 0.1); /* Adjusted for dark mode */
     }
-    .header { font-size: 2rem; font-weight: 700; color: var(--text-color); margin-bottom: 1.5rem; }
-    .subheader { font-size: 1.5rem; font-weight: 600; color: var(--text-color); margin-bottom: 1rem; }
-    .metric-card { background-color: var(--secondary-color); border-radius: 0.625rem; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
-    .metric-title { font-size: 0.875rem; color: #6c757d; margin-bottom: 0.3125rem; }
-    .metric-value { font-size: 1.5rem; font-weight: 700; color: var(--text-color); }
-    .stButton>button { background-color: var(--primary-color); color: white; border-radius: 0.625rem; padding: 0.5rem 1rem; border: none; }
-    .stButton>button:hover { background-color: #3a5a9f; }
+    /* Typography */
+    .header {
+        font-size: 2.25rem; /* Slightly larger for emphasis */
+        font-weight: 700;
+        color: var(--text-color);
+        margin-bottom: 2rem;
+        letter-spacing: -0.025em; /* Tighter spacing for modern look */
+    }
+    .subheader {
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--text-color);
+        margin-bottom: 1.5rem;
+        letter-spacing: -0.01em;
+    }
+    /* Metric Cards */
+    .metric-card {
+        background: var(--secondary-color);
+        border-radius: var(--border-radius);
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+        box-shadow: var(--shadow);
+        transition: var(--transition);
+        width: 100%; /* Ensure all cards take full width of their column */
+        max-width: 200px; /* Set a maximum width for consistency */
+        min-height: 120px; /* Ensure consistent height */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center; /* Center-align text for better appearance */
+    }
+    .metric-card:hover {
+        transform: translateY(-2px); /* Subtle lift on hover */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Slightly stronger shadow */
+    }
+    .metric-title {
+        font-size: 0.875rem;
+        color: #6b7280; /* Softer gray for secondary text */
+        margin-bottom: 0.5rem;
+        text-transform: uppercase; /* Modern touch */
+        font-weight: 500;
+    }
+    .metric-value {
+        font-size: 1.5rem; /* Slightly smaller to fit better */
+        font-weight: 700;
+        color: var(--text-color);
+        word-wrap: break-word; /* Allow text to wrap if too long */
+        overflow-wrap: break-word; /* Ensure long numbers wrap */
+        line-height: 1.2; /* Tighter line height for better fit */
+    }
+    /* Buttons */
+    .stButton>button {
+        background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); /* Gradient for depth */
+        color: white;
+        border-radius: var(--border-radius);
+        padding: 0.75rem 1.5rem; /* Larger padding for better click area */
+        border: none;
+        font-weight: 500;
+        text-transform: uppercase; /* Modern button style */
+        letter-spacing: 0.05em;
+        transition: var(--transition);
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #4f46e5, #059669); /* Darker gradient on hover */
+        transform: translateY(-1px); /* Subtle lift */
+        box-shadow: var(--shadow);
+    }
+    .stButton>button:focus {
+        outline: 2px solid var(--accent-color); /* Accessible focus state */
+        outline-offset: 2px;
+    }
+    /* General Improvements */
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; /* Modern font stack */
+        line-height: 1.6; /* Better readability */
+    }
+    .stTabs [role="tab"] {
+        border-radius: var(--border-radius);
+        padding: 0.5rem 1rem;
+        transition: var(--transition);
+    }
+    .stTabs [role="tab"]:hover {
+        background-color: var(--secondary-color);
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: var(--primary-color);
+        color: white;
+    }
     </style>
 """, unsafe_allow_html=True)
 
+# Define all functions before main()
 @st.cache_resource(ttl=3600)
 def load_model(path: Path) -> Optional[Pipeline]:
     try:
@@ -167,6 +259,7 @@ def evaluate_model(pipeline: Pipeline, X: pd.DataFrame, y: np.ndarray) -> dict:
         'R2': r2_score(y_actual_ksh, y_pred_ksh)
     }
 
+# Main function comes after all other definitions
 def main():
     st.sidebar.title("Settings")
     theme = st.sidebar.selectbox("Theme", ["System", "Light", "Dark"])
@@ -222,7 +315,6 @@ def main():
     
     with tab1:
         st.markdown('<div class="subheader">Price Prediction</div>', unsafe_allow_html=True)
-        # Fixed the ternary operator syntax here
         neighborhoods = train_data['Neighborhood'].unique().tolist() if train_data is not None else ['NAmes']
         with st.form("predict_form"):
             col1, col2 = st.columns(2)
